@@ -14,4 +14,3 @@ RUN wget -qO /tmp/vault.zip https://releases.hashicorp.com/vault/${VAULT_VERSION
       rm /tmp/vault.zip
 
 ADD assets/ /opt/resource/
-RUN chmod +x /opt/resource/*
