@@ -86,7 +86,7 @@ echo "$value" | jq --raw-output 'keys[]' | while read -r key; do
   # sanitize path
   path="$(realpath --canonicalize-missing --relative-to / "/$key")"
   mkdir -p "$(dirname "$path")"
-  echo "$value" | jq --raw-output ".[\"$key\"]" > "$path"
+  echo -n "$value" | jq --raw-output ".[\"$key\"]" > "$path"
 done
 
 echo '{
