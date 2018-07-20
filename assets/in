@@ -1,0 +1,81 @@
+#!/bin/bash
+
+set -e
+
+exec 3>&1 # make stdout available as fd 3 for the result
+exec 1>&2 # redirect all output to stderr for logging
+
+source=$1
+
+if [ -z "$source" ]; then
+    echo "usage: $0 <path/to/source>"
+    exit 1
+fi
+
+cd $source
+
+payload=$TMPDIR/vault-resource-request
+
+# TODO: Understand this
+cat > $payload <&0
+
+url=$(jq -r '.source.url // ""' < $payload)
+approle_id=$(jq -r '.source.approle_id // ""' < $payload)
+approle_secret=$(jq -r '.source.approle_secret // ""' < $payload)
+path=$(jq -r '.source.path // ""' < $payload)
+key=$(jq -r '.source.key // ""' < $payload)
+version_to_get=$(jq -r '.version.version // "HEAD"' < $payload)
+
+# Default key to "value" if nothing is specified
+if [ -z "$key" ]; then
+    key="value"
+fi
+
+fail=false
+if [ -z "$url" ]; then
+  echo "invalid payload (missing url)"
+  fail=true
+fi
+
+if [ -z "$approle_id" ]; then
+  echo "invalid payload (missing approle_id)"
+  fail=true
+fi
+
+if [ -z "$approle_secret" ]; then
+  echo "invalid payload (missing approle_secret)"
+  fail=true
+fi
+
+if [ -z "$path" ]; then
+  echo "invalid payload (missing path)"
+  fail=true
+fi
+
+if [ $fail ]; then
+    exit 1
+fi
+
+export VAULT_ADDR="$url"
+export VAULT_FORMAT="json"
+
+token=$(vault write auth/approle/login role_id="$approle_id" secret_id="$approle_secret" | jq -r .auth.client_token)
+vault login $token
+
+# We are going to ignore the version asked to retrieve and just get the
+# latest.
+# Using this format instead of `vault read $path` because it is supported by
+# both kv engines.
+value=$(vault kv get $path | jq .data.$key)
+# If the value is null then it could be that the secret path belongs to
+# versioned kv engine, so we have to check a different path
+if [ $value == "null" ]; then
+    value=$(vault kv get $path | jq .data.data.$key)
+fi
+
+# We lie and say we get the expected version.
+# TODO: Improve this when we know we are using version 2 KV engine.
+jq -n "{
+  version: {version: $(echo $version_to_get | jq -R .)},
+  value: $value
+}" >&3
