@@ -1,0 +1,43 @@
+resource_types:
+- name: vault
+  type: docker-image
+  source:
+    repository: wfernandes/vault-resource
+    tag: latest
+
+resources:
+- name: vault-test
+  type: vault
+  source:
+    url: vault-url
+    role_id: ((vault.role_id))
+    secret_id: ((vault.secret_id))
+    path: path/to/data
+
+jobs:
+- name: write-random-value
+  plan:
+  - get: vault-test
+    trigger: true
+  - task: write-random-value
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: ubuntu
+      inputs:
+      - name: vault-test
+      outputs:
+      - name: vault-test-new
+      run:
+        path: /bin/bash
+        args:
+        - "-c"
+        - |
+          #!/bin/bash
+          echo $RANDOM > vault-test/rand
+          cp -R vault-test/. vault-test-new/
+  - put: vault-test
+    params:
+      data: vault-test-new

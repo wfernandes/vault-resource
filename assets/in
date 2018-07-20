@@ -5,31 +5,23 @@ set -e
 exec 3>&1 # make stdout available as fd 3 for the result
 exec 1>&2 # redirect all output to stderr for logging
 
-source=$1
+destination="$1"
 
-if [ -z "$source" ]; then
-    echo "usage: $0 <path/to/source>"
-    exit 1
+if [ -z "$destination" ]; then
+  echo "usage: $0 <path/to/destination>"
+  exit 1
 fi
 
-cd $source
+payload="$TMPDIR/vault-resource-request"
 
-payload=$TMPDIR/vault-resource-request
+cat > "$payload" <&0
 
-# TODO: Understand this
-cat > $payload <&0
-
-url=$(jq -r '.source.url // ""' < $payload)
-approle_id=$(jq -r '.source.approle_id // ""' < $payload)
-approle_secret=$(jq -r '.source.approle_secret // ""' < $payload)
-path=$(jq -r '.source.path // ""' < $payload)
-key=$(jq -r '.source.key // ""' < $payload)
-version_to_get=$(jq -r '.version.version // "HEAD"' < $payload)
-
-# Default key to "value" if nothing is specified
-if [ -z "$key" ]; then
-    key="value"
-fi
+url=$(jq --raw-output '.source.url // ""' < "$payload")
+role_id=$(jq --raw-output '.source.role_id // ""' < "$payload")
+secret_id=$(jq --raw-output '.source.secret_id // ""' < "$payload")
+path=$(jq --raw-output '.source.path // ""' < "$payload")
+# tarball=$(jq --raw-output '.source.tarball // "false"' < "$payload")
+version_to_get=$(jq -r '.version.hash // ""' < "$payload")
 
 fail=false
 if [ -z "$url" ]; then
@@ -37,13 +29,13 @@ if [ -z "$url" ]; then
   fail=true
 fi
 
-if [ -z "$approle_id" ]; then
-  echo "invalid payload (missing approle_id)"
+if [ -z "$role_id" ]; then
+  echo "invalid payload (missing role_id)"
   fail=true
 fi
 
-if [ -z "$approle_secret" ]; then
-  echo "invalid payload (missing approle_secret)"
+if [ -z "$secret_id" ]; then
+  echo "invalid payload (missing secret_id)"
   fail=true
 fi
 
@@ -52,30 +44,53 @@ if [ -z "$path" ]; then
   fail=true
 fi
 
-if [ $fail ]; then
-    exit 1
+if [ -z "$version_to_get" ]; then
+  echo "invalid payload (missing version_to_get)"
+  fail=true
+fi
+
+if [ "$fail" = "true" ]; then
+  exit 1
 fi
 
 export VAULT_ADDR="$url"
 export VAULT_FORMAT="json"
 
-token=$(vault write auth/approle/login role_id="$approle_id" secret_id="$approle_secret" | jq -r .auth.client_token)
-vault login $token
+
+token="$(
+  vault write auth/approle/login role_id="$role_id" secret_id="$secret_id" | \
+    jq --raw-output .auth.client_token
+)"
+vault login "$token" > /dev/null 2>&1
 
 # We are going to ignore the version asked to retrieve and just get the
-# latest.
-# Using this format instead of `vault read $path` because it is supported by
-# both kv engines.
-value=$(vault kv get $path | jq .data.$key)
-# If the value is null then it could be that the secret path belongs to
-# versioned kv engine, so we have to check a different path
-if [ $value == "null" ]; then
-    value=$(vault kv get $path | jq .data.data.$key)
+# latest. Using this format instead of `vault read $path` because it is
+# supported by both kv engines.
+value="$(vault kv get "$path" | jq .data)"
+
+# In the future, we can support a param that takes in the version of the KV
+# Engine. So if we know it is version 2, we can search for the version of the
+# resource instead of creating a hash on the fly as we do here.
+version="$(echo "$value" | sha256sum | awk '{print $1}')"
+
+if [ "$version" != "$version_to_get" ]; then
+  echo "the hash of the data does not match the version hash provided"
+  exit 1
 fi
 
-# We lie and say we get the expected version.
-# TODO: Improve this when we know we are using version 2 KV engine.
-jq -n "{
-  version: {version: $(echo $version_to_get | jq -R .)},
-  value: $value
-}" >&3
+# TODO: implement tarball functionality
+
+cd "$destination"
+
+echo "$value" | jq --raw-output 'keys[]' | while read -r key; do
+  # sanitize path
+  path="$(realpath --canonicalize-missing --relative-to / "/$key")"
+  mkdir -p "$(dirname "$path")"
+  echo "$value" | jq --raw-output ".[\"$key\"]" > "$path"
+done
+
+echo '{
+  "version": {
+    "hash": "'"$version"'"
+  }
+}' >&3
