@@ -1,0 +1,65 @@
+#!/bin/bash
+
+set -e
+
+exec 3>&1 # make stdout available as fd 3 for the result
+exec 1>&2 # redirect all output to stderr for logging
+
+payload=$TMPDIR/vault-resource-request
+
+# TODO: Understand this
+cat > $payload <&0
+
+url=$(jq -r '.source.url // ""' < $payload)
+approle_id=$(jq -r '.source.approle_id // ""' < $payload)
+approle_secret=$(jq -r '.source.approle_secret // ""' < $payload)
+path=$(jq -r '.source.path // ""' < $payload)
+key=$(jq -r '.source.key // ""' < $payload)
+
+# Default key to "value" if nothing is specified
+if [ -z "$key" ]; then
+    key="value"
+fi
+
+fail=false
+if [ -z "$url" ]; then
+  echo "invalid payload (missing url)"
+  fail=true
+fi
+
+if [ -z "$approle_id" ]; then
+  echo "invalid payload (missing approle_id)"
+  fail=true
+fi
+
+if [ -z "$approle_secret" ]; then
+  echo "invalid payload (missing approle_secret)"
+  fail=true
+fi
+
+if [ -z "$path" ]; then
+  echo "invalid payload (missing path)"
+  fail=true
+fi
+
+if [ $fail ]; then
+    exit 1
+fi
+
+export VAULT_ADDR="$url"
+export VAULT_FORMAT="json"
+
+token=$(vault write auth/approle/login role_id="$approle_id" secret_id="$approle_secret" | jq -r .auth.client_token)
+vault login $token
+# Using this format instead of `vault read $path` because it is supported by
+# both kv engines.
+value=$(vault kv get $path | jq .data.$key)
+
+# In the future, we can support a param that takes in the version of the KV
+# Engine. So if we know it is version 2, we can search for the
+# version/creation time of the resource instead of creating a date on the fly
+# as we do here.
+created_date=$(date +%Y-%m-%dT%X.%sZ)
+
+# Convert to an array
+echo {\"version\": \"$created_date\"} | jq --slurp . >&3
