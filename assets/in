@@ -20,7 +20,7 @@ url=$(jq --raw-output '.source.url // ""' < "$payload")
 role_id=$(jq --raw-output '.source.role_id // ""' < "$payload")
 secret_id=$(jq --raw-output '.source.secret_id // ""' < "$payload")
 path=$(jq --raw-output '.source.path // ""' < "$payload")
-# tarball=$(jq --raw-output '.source.tarball // "false"' < "$payload")
+tarball=$(jq --raw-output '.source.tarball // "false"' < "$payload")
 version_to_get=$(jq -r '.version.hash // ""' < "$payload")
 
 fail=false
@@ -78,16 +78,20 @@ if [ "$version" != "$version_to_get" ]; then
   exit 1
 fi
 
-# TODO: implement tarball functionality
-
 cd "$destination"
-
-echo "$value" | jq --raw-output 'keys[]' | while read -r key; do
-  # sanitize path
-  path="$(realpath --canonicalize-missing --relative-to / "/$key")"
-  mkdir -p "$(dirname "$path")"
-  echo -n "$value" | jq --join-output ".[\"$key\"]" > "$path"
-done
+if [ "$tarball" = true ]; then
+  enc="$(echo "$value" | jq --join-output '.tarball')"
+  if [ "$enc" != "" ]; then
+    echo "$enc" | base64 -d | tar -xzf -
+  fi
+else
+  echo "$value" | jq --raw-output 'keys[]' | while read -r key; do
+    # sanitize path
+    path="$(realpath --canonicalize-missing --relative-to / "/$key")"
+    mkdir -p "$(dirname "$path")"
+    echo -n "$value" | jq --join-output ".[\"$key\"]" > "$path"
+  done
+fi
 
 echo '{
   "version": {

@@ -21,7 +21,7 @@ role_id=$(jq --raw-output '.source.role_id // ""' < "$payload")
 secret_id=$(jq --raw-output '.source.secret_id // ""' < "$payload")
 path=$(jq --raw-output '.source.path // ""' < "$payload")
 data=$(jq --raw-output '.params.data // ""' < "$payload")
-# tarball=$(jq --raw-output '.source.tarball // "false"' < "$payload")
+tarball=$(jq --raw-output '.source.tarball // "false"' < "$payload")
 
 fail=false
 if [ -z "$url" ]; then
@@ -62,10 +62,16 @@ token="$(
 )"
 vault login "$token" > /dev/null 2>&1
 
-# TODO: implement tarball functionality
-
 cd "$sources/$data"
-args="$(find . -type f -print0 | xargs -0 realpath --relative-to "$PWD" | awk '{print $1 "=@" $1}')"
+if [ "$tarball" = true ]; then
+  tar -czf ../data.tgz .
+  base64 ../data.tgz > ../data.tgz.enc
+  args="tarball=@../data.tgz.enc"
+else
+  args="$(find . -type f -print0 | \
+            xargs -0 realpath --relative-to "$PWD" | \
+            awk '{print $1 "=@" $1}')"
+fi
 
 vault write "$path" $args
 
