@@ -81,7 +81,7 @@ fi
 cd "$destination"
 if [ "$tarball" = true ]; then
   enc="$(echo "$value" | jq --join-output '.tarball')"
-  if [ "$enc" != "" ]; then
+  if [ "$enc" != "null" ]; then
     echo "$enc" | base64 -d | tar -xzf -
   fi
 else
