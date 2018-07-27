@@ -57,7 +57,7 @@ export VAULT_ADDR="$url"
 export VAULT_FORMAT="json"
 
 token="$(
-  vault kv put auth/approle/login role_id="$role_id" secret_id="$secret_id" | \
+  vault write auth/approle/login role_id="$role_id" secret_id="$secret_id" | \
     jq --raw-output .auth.client_token
 )"
 vault login "$token" > /dev/null 2>&1
