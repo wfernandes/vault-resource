@@ -42,12 +42,16 @@ fi
 export VAULT_ADDR="$url"
 export VAULT_FORMAT="json"
 
-# TODO: check to see if logged in already
 token="$(
   vault write auth/approle/login role_id="$role_id" secret_id="$secret_id" | \
     jq --raw-output .auth.client_token
 )"
 vault login "$token"
+
+function cleanup {
+    vault token revoke -self
+}
+trap cleanup EXIT
 
 # Using this format instead of `vault read $path` because it is supported by
 # both kv engines.
