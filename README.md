@@ -1,8 +1,18 @@
 # vault-resource
 Concourse Vault Resource
 
+## Source Configuration
 
-## Installing
+- `url`: *Required* URL of Vault
+- `role_id`: *Required* AppRole Id
+   The role_id can be obtained by running `vault read auth/approle/<my-role>/role-id`
+- `secret_id`: *Required* Secret Id of the app role.
+   The secret_id can be obtained by running `vault write -f
+auth/approle/role/<my-role>/secret-id`
+- `path`: *Required* The path of the secret in vault
+- `tarball`: *Optional*
+
+## Example
 
 ```
 resource_types:
@@ -19,7 +29,11 @@ resources:
     url: ((vault.url))
     role_id: ((vault.role_id))
     secret_id: ((vault.secret_id))
-    path: path/to/data
+    path: /secret/ci/datadog-api-key
 ```
 
-## Source Configuration
+## Behavior
+
+- *check*:
+- *in*
+- *out*
