@@ -13,6 +13,7 @@ url=$(jq --raw-output '.source.url // ""' < "$payload")
 role_id=$(jq --raw-output '.source.role_id // ""' < "$payload")
 secret_id=$(jq --raw-output '.source.secret_id // ""' < "$payload")
 path=$(jq --raw-output '.source.path // ""' < "$payload")
+versioned=$(jq --raw-output '.source.versioned // "false"' < "$payload")
 
 fail=false
 if [ -z "$url" ]; then
@@ -53,14 +54,15 @@ function cleanup {
 }
 trap cleanup EXIT
 
-# Using this format instead of `vault read $path` because it is supported by
-# both kv engines.
-value="$(vault kv get "$path" | jq .data)"
-
-# In the future, we can support a param that takes in the version of the KV
-# Engine. So if we know it is version 2, we can search for the version of the
-# resource instead of creating a hash on the fly as we do here.
-version="$(echo "$value" | sha256sum | awk '{print $1}')"
+# If versioned is set then read kv engine v2
+if [ "$versioned" = true ]; then
+  resp="$(vault kv get "$path")"
+  data="echo $resp | jq .data.data"
+  version="echo $resp | jq .data.metadata.version"
+else
+  data="$(vault kv get "$path" | jq .data)"
+  version="$(echo "$data" | sha256sum | awk '{print $1}')"
+fi
 
 # Convert to an array
-echo '{"hash": "'"$version"'"}' | jq --slurp . >&3
+echo '{"version": "'"$version"'"}' | jq --slurp . >&3

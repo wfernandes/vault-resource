@@ -21,7 +21,8 @@ role_id=$(jq --raw-output '.source.role_id // ""' < "$payload")
 secret_id=$(jq --raw-output '.source.secret_id // ""' < "$payload")
 path=$(jq --raw-output '.source.path // ""' < "$payload")
 tarball=$(jq --raw-output '.source.tarball // "false"' < "$payload")
-version_to_get=$(jq -r '.version.hash // ""' < "$payload")
+versioned=$(jq --raw-output '.source.versioned // "false"' < "$payload")
+version_to_get=$(jq -r '.version.version // ""' < "$payload")
 
 fail=false
 if [ -z "$url" ]; then
@@ -67,38 +68,44 @@ function cleanup {
 }
 trap cleanup EXIT
 
-# We are going to ignore the version asked to retrieve and just get the
-# latest. Using this format instead of `vault read $path` because it is
-# supported by both kv engines.
-value="$(vault kv get "$path" | jq .data)"
 
-# In the future, we can support a param that takes in the version of the KV
-# Engine. So if we know it is version 2, we can search for the version of the
-# resource instead of creating a hash on the fly as we do here.
-version="$(echo "$value" | sha256sum | awk '{print $1}')"
+if [ "$versioned" = true ]; then
+    data="$(vault kv get -version="$version_to_get" "$path" | jq .data.data)"
+    version="$version_to_get"
+else
+    # We are going to ignore the version asked to retrieve and just get the
+    # latest. Using this format instead of `vault read $path` because it is
+    # supported by both kv engines.
+    data="$(vault kv get "$path" | jq .data)"
 
-if [ "$version" != "$version_to_get" ]; then
-  echo "the hash of the data does not match the version hash provided"
-  exit 1
+    # In the future, we can support a param that takes in the version of the KV
+    # Engine. So if we know it is version 2, we can search for the version of the
+    # resource instead of creating a hash on the fly as we do here.
+    version="$(echo "$data" | sha256sum | awk '{print $1}')"
+
+    if [ "$version" != "$version_to_get" ]; then
+      echo "the hash of the data does not match the version hash provided"
+      exit 1
+    fi
 fi
 
 cd "$destination"
 if [ "$tarball" = true ]; then
-  enc="$(echo "$value" | jq --join-output '.tarball')"
+  enc="$(echo "$data" | jq --join-output '.tarball')"
   if [ "$enc" != "null" ]; then
     echo "$enc" | base64 -d | tar -xzf -
   fi
 else
-  echo "$value" | jq --raw-output 'keys[]' | while read -r key; do
+  echo "$data" | jq --raw-output 'keys[]' | while read -r key; do
     # sanitize path
     path="$(realpath --canonicalize-missing --relative-to / "/$key")"
     mkdir -p "$(dirname "$path")"
-    echo -n "$value" | jq --join-output ".[\"$key\"]" > "$path"
+    echo -n "$data" | jq --join-output ".[\"$key\"]" > "$path"
   done
 fi
 
 echo '{
   "version": {
-    "hash": "'"$version"'"
+    "version": "'"$version"'"
   }
 }' >&3

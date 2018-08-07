@@ -22,6 +22,7 @@ secret_id=$(jq --raw-output '.source.secret_id // ""' < "$payload")
 path=$(jq --raw-output '.source.path // ""' < "$payload")
 data=$(jq --raw-output '.params.data // ""' < "$payload")
 tarball=$(jq --raw-output '.source.tarball // "false"' < "$payload")
+versioned=$(jq --raw-output '.source.versioned // "false"' < "$payload")
 
 fail=false
 if [ -z "$url" ]; then
@@ -78,17 +79,17 @@ else
             awk '{print $1 "=@" $1}')"
 fi
 
-vault kv put "$path" $args
-
-value="$(vault kv get "$path" | jq .data)"
-
-# In the future, we can support a param that takes in the version of the KV
-# Engine. So if we know it is version 2, we can search for the version of the
-# resource instead of creating a hash on the fly as we do here.
-version="$(echo "$value" | sha256sum | awk '{print $1}')"
+if [ "$versioned" = true ]; then
+    data=$(vault kv patch "$path" $args)
+    version=$(echo "$data" | jq .data.version)
+else
+    vault kv put "$path" $args
+    data="$(vault kv get "$path" | jq .data)"
+    version="$(echo "$data" | sha256sum | awk '{print $1}')"
+fi
 
 echo '{
   "version": {
-    "hash": "'"$version"'"
+    "version": "'"$version"'"
   }
 }' >&3
