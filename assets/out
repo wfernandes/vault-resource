@@ -80,7 +80,7 @@ else
 fi
 
 if [ "$versioned" = true ]; then
-    data=$(vault kv patch "$path" $args)
+    data=$(vault kv put "$path" $args)
     version=$(echo "$data" | jq .data.version)
 else
     vault kv put "$path" $args
@@ -90,6 +90,6 @@ fi
 
 echo '{
   "version": {
-    "version": "'"$version"'"
+    "id": "'"$version"'"
   }
 }' >&3

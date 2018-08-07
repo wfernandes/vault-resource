@@ -56,13 +56,10 @@ trap cleanup EXIT
 
 # If versioned is set then read kv engine v2
 if [ "$versioned" = true ]; then
-  resp="$(vault kv get "$path")"
-  data="echo $resp | jq .data.data"
-  version="echo $resp | jq .data.metadata.version"
+  version="$(vault kv get "$path" | jq --join-output .data.metadata.version)"
 else
-  data="$(vault kv get "$path" | jq .data)"
-  version="$(echo "$data" | sha256sum | awk '{print $1}')"
+  version="$(vault kv get "$path" | jq .data | sha256sum | awk '{print $1}')"
 fi
 
 # Convert to an array
-echo '{"version": "'"$version"'"}' | jq --slurp . >&3
+echo '{"id": "'"$version"'"}' | jq --slurp . >&3

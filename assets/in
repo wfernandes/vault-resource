@@ -22,7 +22,7 @@ secret_id=$(jq --raw-output '.source.secret_id // ""' < "$payload")
 path=$(jq --raw-output '.source.path // ""' < "$payload")
 tarball=$(jq --raw-output '.source.tarball // "false"' < "$payload")
 versioned=$(jq --raw-output '.source.versioned // "false"' < "$payload")
-version_to_get=$(jq -r '.version.version // ""' < "$payload")
+version_to_get=$(jq -r '.version.id // ""' < "$payload")
 
 fail=false
 if [ -z "$url" ]; then
@@ -106,6 +106,6 @@ fi
 
 echo '{
   "version": {
-    "version": "'"$version"'"
+    "id": "'"$version"'"
   }
 }' >&3
