@@ -58,7 +58,7 @@ export VAULT_ADDR="$url"
 export VAULT_FORMAT="json"
 
 if [ -n "$ca_cert" ]; then
-  echo $ca_cert > $PWD/ca.pem
+  echo "$ca_cert" > $PWD/ca.pem
   export VAULT_CAPATH="$PWD/ca.pem"
 fi
 
