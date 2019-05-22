@@ -50,6 +50,7 @@ resources:
     role_id: ((vault.role_id))
     secret_id: ((vault.secret_id))
     path: /secret/ci/datadog-api-key
+    ca_cert: ((vault.ca_cert))
 ```
 
 Fetch a secret,
