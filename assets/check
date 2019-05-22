@@ -13,6 +13,7 @@ url=$(jq --raw-output '.source.url // ""' < "$payload")
 role_id=$(jq --raw-output '.source.role_id // ""' < "$payload")
 secret_id=$(jq --raw-output '.source.secret_id // ""' < "$payload")
 path=$(jq --raw-output '.source.path // ""' < "$payload")
+ca_cert=$(jq --raw-output '.source.ca_cert // ""' < "$payload")
 
 fail=false
 if [ -z "$url" ]; then
@@ -41,6 +42,11 @@ fi
 
 export VAULT_ADDR="$url"
 export VAULT_FORMAT="json"
+
+if [ -n "$ca_cert" ]; then
+  echo $ca_cert > $PWD/ca.pem
+  export VAULT_CAPATH="$PWD/ca.pem"
+fi
 
 token="$(
   vault write auth/approle/login role_id="$role_id" secret_id="$secret_id" | \
